@@ -104,6 +104,16 @@ Arduino IDE also works: core 3.1.2 + SdFat 1.1.4, Generic ESP8285, 160 MHz, DOUT
 flash.bat COM7
 ```
 
+**Recovery — if the web UI is unreachable but the board pings:**
+ArduinoOTA (port 8266) is independent of the web server, so espota can still
+flash a board whose port 80 is down — no need to open the case:
+
+```bash
+python espota.py -i <board-ip> -I <your-pc-ip> -p 8266 -P 18266 --auth=fysetc -f firmware/firmware.bin
+```
+
+(`espota.py` ships with the ESP8266 core, under `tools/`.)
+
 **OTA (after that):**
 
 ```bash
