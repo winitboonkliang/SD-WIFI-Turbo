@@ -4,7 +4,7 @@ Rework of the stock FYSETC firmware for the SD-WIFI board (rev 2.x, ESP-M2/ESP82
 Fixes every known hang, is dramatically faster, and adds a neon web file manager.
 Everything from stock still works: `SETUP.INI`, M50–M53 serial commands, 3D-printer bus sharing.
 
-![Download 16x faster, upload 2.4x faster than stock firmware](docs/benchmark.svg)
+![Download 14.7x faster, upload 2.7x faster than the stock firmware](docs/benchmark.svg)
 
 ![Web file manager](docs/webui-main.png)
 
