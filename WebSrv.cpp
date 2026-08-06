@@ -2,32 +2,35 @@
 
 // Sections are copied from ESP8266Webserver
 
-// ------------------------
-String ESPWebDAV::getMimeType(String path) {
-// ------------------------
-	if(path.endsWith(".html")) return "text/html";
-	else if(path.endsWith(".htm")) return "text/html";
-	else if(path.endsWith(".css")) return "text/css";
-	else if(path.endsWith(".txt")) return "text/plain";
-	else if(path.endsWith(".js")) return "application/javascript";
-	else if(path.endsWith(".json")) return "application/json";
-	else if(path.endsWith(".png")) return "image/png";
-	else if(path.endsWith(".gif")) return "image/gif";
-	else if(path.endsWith(".jpg")) return "image/jpeg";
-	else if(path.endsWith(".ico")) return "image/x-icon";
-	else if(path.endsWith(".svg")) return "image/svg+xml";
-	else if(path.endsWith(".ttf")) return "application/x-font-ttf";
-	else if(path.endsWith(".otf")) return "application/x-font-opentype";
-	else if(path.endsWith(".woff")) return "application/font-woff";
-	else if(path.endsWith(".woff2")) return "application/font-woff2";
-	else if(path.endsWith(".eot")) return "application/vnd.ms-fontobject";
-	else if(path.endsWith(".sfnt")) return "application/font-sfnt";
-	else if(path.endsWith(".xml")) return "text/xml";
-	else if(path.endsWith(".pdf")) return "application/pdf";
-	else if(path.endsWith(".zip")) return "application/zip";
-	else if(path.endsWith(".gz")) return "application/x-gzip";
-	else if(path.endsWith(".appcache")) return "text/cache-manifest";
+// mime table kept small and in plain RAM - looked up per request only
+struct MimeEntry { const char *ext; const char *mime; };
+static const MimeEntry MIME_TABLE[] = {
+	{ ".html", "text/html" },
+	{ ".htm",  "text/html" },
+	{ ".css",  "text/css" },
+	{ ".txt",  "text/plain" },
+	{ ".js",   "application/javascript" },
+	{ ".json", "application/json" },
+	{ ".png",  "image/png" },
+	{ ".gif",  "image/gif" },
+	{ ".jpg",  "image/jpeg" },
+	{ ".ico",  "image/x-icon" },
+	{ ".svg",  "image/svg+xml" },
+	{ ".xml",  "text/xml" },
+	{ ".pdf",  "application/pdf" },
+	{ ".zip",  "application/zip" },
+	{ ".gz",   "application/x-gzip" },
+};
 
+// ------------------------
+const char *ESPWebDAV::getMimeType(const char *path) {
+// ------------------------
+	const char *dot = strrchr(path, '.');
+	if(dot)	{
+		for(size_t i = 0; i < sizeof(MIME_TABLE)/sizeof(MIME_TABLE[0]); i++)
+			if(strcasecmp(dot, MIME_TABLE[i].ext) == 0)
+				return MIME_TABLE[i].mime;
+	}
 	return "application/octet-stream";
 }
 
@@ -38,6 +41,7 @@ String ESPWebDAV::getMimeType(String path) {
 String ESPWebDAV::urlDecode(const String& text)	{
 // ------------------------
 	String decoded = "";
+	decoded.reserve(text.length());
 	char temp[] = "0x00";
 	unsigned int len = text.length();
 	unsigned int i = 0;
@@ -78,24 +82,73 @@ String ESPWebDAV::urlToUri(String url)	{
 
 
 // ------------------------
-bool ESPWebDAV::isClientWaiting() {
+String ESPWebDAV::queryParam(const char *key)	{
 // ------------------------
-	return server->hasClient();
+	// extract & url-decode one "key=value" from the raw query string
+	String k = String(key) + "=";
+	int pos = 0;
+	while(pos >= 0 && pos < (int) queryString.length())	{
+		int amp = queryString.indexOf('&', pos);
+		String seg = (amp < 0) ? queryString.substring(pos) : queryString.substring(pos, amp);
+		if(seg.startsWith(k))
+			return urlDecode(seg.substring(k.length()));
+		pos = (amp < 0) ? -1 : amp + 1;
+	}
+	return String();
 }
 
 
 
+// ------------------------
+void ESPWebDAV::maintainClient() {
+// ------------------------
+	// Non-blocking connection bookkeeping, called every loop().
+	// The old code did "while(!client.available()) delay(1);" with no timeout
+	// and no connected() check - one idle probe connection from Windows froze
+	// the whole board until power cycle.
+	if(!server)
+		return;
 
-// ------------------------
-void ESPWebDAV::handleClient(String blank) {
-// ------------------------
-	processClient(&ESPWebDAV::handleRequest, blank);
+	if(client.connected())	{
+		if(client.available())
+			return;			// a request is waiting - keep the connection
+
+		uint32_t idle = millis() - clientLastActive;
+		if(idle > KEEPALIVE_IDLE_MS || (server->hasClient() && idle > KEEPALIVE_YIELD_MS))
+			client.stop();	// recycle: idle too long, or someone else needs us
+		else
+			return;
+	}
+
+	// slot is free - adopt a waiting client if there is one
+	if(server->hasClient())	{
+		client = server->accept();
+		client.setNoDelay(true);
+		client.setTimeout(HTTP_HEADER_TIMEOUT_MS);
+		clientLastActive = millis();
+	}
 }
 
 
 
 // ------------------------
-void ESPWebDAV::rejectClient(String rejectMessage) {
+bool ESPWebDAV::requestPending() {
+// ------------------------
+	return client.available() > 0;
+}
+
+
+
+// ------------------------
+void ESPWebDAV::handleClient() {
+// ------------------------
+	processClient(&ESPWebDAV::handleRequest, "");
+}
+
+
+
+// ------------------------
+void ESPWebDAV::rejectClient(const char *rejectMessage) {
 // ------------------------
 	processClient(&ESPWebDAV::handleReject, rejectMessage);
 }
@@ -103,43 +156,54 @@ void ESPWebDAV::rejectClient(String rejectMessage) {
 
 
 // ------------------------
-void ESPWebDAV::processClient(THandlerFunction handler, String message) {
+void ESPWebDAV::processClient(THandlerFunction handler, const char *message) {
 // ------------------------
-	// Check if a client has connected
-	client = server->available();
-	if(!client)
+	if(!client.available())
 		return;
 
-	// Wait until the client sends some data
-	while(!client.available())
-		delay(1);
-	
-	// reset all variables
+	// reset all per-request variables
 	_chunked = false;
 	_responseHeaders = String();
 	_contentLength = CONTENT_LENGTH_NOT_SET;
 	method = String();
 	uri = String();
+	queryString = String();
 	contentLengthHeader = String();
 	depthHeader = String();
 	hostHeader = String();
 	destinationHeader = String();
+	overwriteHeader = String();
+	keepClient = false;
+	expect100 = false;
+	chunkedBody = false;
+	bodyRemaining = 0;
+
+	client.setTimeout(HTTP_HEADER_TIMEOUT_MS);
 
 	// extract uri, headers etc
 	if(parseRequest())
 		// invoke the handler
 		(this->*handler)(message);
-		
+	else
+		keepClient = false;
+
 	// finalize the response
 	if(_chunked)
 		sendContent("");
 
-	// send all data before closing connection
-	client.flush();
-	// close the connection
-	client.stop();
-}
+	// eat whatever request-body bytes the handler did not consume, so the
+	// next request on this connection starts at a clean boundary
+	drainBody();
 
+	clientLastActive = millis();
+
+	// heap low-water mark for the status panel / hang diagnostics
+	uint32_t h = ESP.getFreeHeap();
+	if(h < g_minFreeHeap) g_minFreeHeap = h;
+
+	if(!keepClient)
+		client.stop();
+}
 
 
 
@@ -150,7 +214,13 @@ bool ESPWebDAV::parseRequest() {
 	// Read the first line of HTTP request
 	String req = client.readStringUntil('\r');
 	client.readStringUntil('\n');
-	
+
+	// tolerate a stray CRLF left over from the previous request
+	if(req.length() == 0)	{
+		req = client.readStringUntil('\r');
+		client.readStringUntil('\n');
+	}
+
 	// First line of HTTP request looks like "GET /path HTTP/1.1"
 	// Retrieve the "/path" part by finding the spaces
 	int addr_start = req.indexOf(' ');
@@ -160,28 +230,38 @@ bool ESPWebDAV::parseRequest() {
 	}
 
 	method = req.substring(0, addr_start);
-	uri = urlDecode(req.substring(addr_start + 1, addr_end));
-	// DBG_PRINT("method: "); DBG_PRINT(method); DBG_PRINT(" url: "); DBG_PRINTLN(uri);
-	
+
+	// split "?query" off before decoding the path
+	String rawUri = req.substring(addr_start + 1, addr_end);
+	int qPos = rawUri.indexOf('?');
+	if(qPos >= 0)	{
+		queryString = rawUri.substring(qPos + 1);
+		rawUri.remove(qPos);
+	}
+	uri = urlDecode(rawUri);
+
+	// HTTP/1.1 defaults to keep-alive
+	keepClient = (req.indexOf("HTTP/1.1", addr_end) >= 0);
+
 	// parse and finish all headers
 	String headerName;
 	String headerValue;
-	
+
 	while(1) {
 		req = client.readStringUntil('\r');
 		client.readStringUntil('\n');
-		if(req == "") 
+		if(req == "")
 			// no more headers
 			break;
-			
+
 		int headerDiv = req.indexOf(':');
 		if (headerDiv == -1)
 			break;
-		
+
 		headerName = req.substring(0, headerDiv);
-		headerValue = req.substring(headerDiv + 2);
-		// DBG_PRINT("\t"); DBG_PRINT(headerName); DBG_PRINT(": "); DBG_PRINTLN(headerValue);
-		
+		headerValue = req.substring(headerDiv + 1);
+		headerValue.trim();
+
 		if(headerName.equalsIgnoreCase("Host"))
 			hostHeader = headerValue;
 		else if(headerName.equalsIgnoreCase("Depth"))
@@ -190,8 +270,25 @@ bool ESPWebDAV::parseRequest() {
 			contentLengthHeader = headerValue;
 		else if(headerName.equalsIgnoreCase("Destination"))
 			destinationHeader = headerValue;
+		else if(headerName.equalsIgnoreCase("Overwrite"))
+			overwriteHeader = headerValue;
+		else if(headerName.equalsIgnoreCase("Connection"))	{
+			if(headerValue.equalsIgnoreCase("close"))
+				keepClient = false;
+			else if(headerValue.indexOf("eep-") >= 0)	// Keep-Alive / keep-alive
+				keepClient = true;
+		}
+		else if(headerName.equalsIgnoreCase("Expect"))	{
+			if(headerValue.indexOf("100-continue") >= 0)
+				expect100 = true;
+		}
+		else if(headerName.equalsIgnoreCase("Transfer-Encoding"))	{
+			if(headerValue.indexOf("hunked") >= 0)
+				chunkedBody = true;
+		}
 	}
-	
+
+	bodyRemaining = chunkedBody ? 0 : strtoul(contentLengthHeader.c_str(), NULL, 10);
 	return true;
 }
 
@@ -212,7 +309,7 @@ void ESPWebDAV::sendHeader(const String& name, const String& value, bool first) 
 
 
 // ------------------------
-void ESPWebDAV::send(String code, const char* content_type, const String& content) {
+void ESPWebDAV::send(const char *code, const char *content_type, const String& content) {
 // ------------------------
 	String header;
 	_prepareHeader(header, code, content_type, content.length());
@@ -225,23 +322,25 @@ void ESPWebDAV::send(String code, const char* content_type, const String& conten
 
 
 // ------------------------
-void ESPWebDAV::_prepareHeader(String& response, String code, const char* content_type, size_t contentLength) {
+void ESPWebDAV::_prepareHeader(String& response, const char *code, const char *content_type, size_t contentLength) {
 // ------------------------
-	response = "HTTP/1.1 " + code + "\r\n";
+	response = "HTTP/1.1 ";
+	response += code;
+	response += "\r\n";
 
 	if(content_type)
 		sendHeader("Content-Type", content_type, true);
-	
+
 	if(_contentLength == CONTENT_LENGTH_NOT_SET)
 		sendHeader("Content-Length", String(contentLength));
 	else if(_contentLength != CONTENT_LENGTH_UNKNOWN)
 		sendHeader("Content-Length", String(_contentLength));
-	else if(_contentLength == CONTENT_LENGTH_UNKNOWN) {
+	else {	// CONTENT_LENGTH_UNKNOWN
 		_chunked = true;
 		sendHeader("Accept-Ranges","none");
 		sendHeader("Transfer-Encoding","chunked");
 	}
-	sendHeader("Connection", "close");
+	sendHeader("Connection", keepClient ? "keep-alive" : "close");
 
 	response += _responseHeaders;
 	response += "\r\n";
@@ -250,28 +349,30 @@ void ESPWebDAV::_prepareHeader(String& response, String code, const char* conten
 
 
 // ------------------------
+void ESPWebDAV::sendContentLen(const char *data, size_t size) {
+// ------------------------
+	if(_chunked) {
+		char chunkHead[12];
+		int l = snprintf(chunkHead, sizeof(chunkHead), "%x\r\n", (unsigned) size);
+		client.write(chunkHead, l);
+	}
+
+	if(size)
+		client.write(data, size);
+
+	if(_chunked) {
+		client.write("\r\n", 2);
+		if (size == 0)
+			_chunked = false;
+	}
+}
+
+
+
+// ------------------------
 void ESPWebDAV::sendContent(const String& content) {
 // ------------------------
-	const char * footer = "\r\n";
-	size_t size = content.length();
-	
-	if(_chunked) {
-		char * chunkSize = (char *) malloc(11);
-		if(chunkSize) {
-			sprintf(chunkSize, "%x%s", size, footer);
-			client.write(chunkSize, strlen(chunkSize));
-			free(chunkSize);
-		}
-	}
-	
-	client.write(content.c_str(), size);
-	
-	if(_chunked) {
-		client.write(footer, 2);
-		if (size == 0) {
-			_chunked = false;
-		}
-	}
+	sendContentLen(content.c_str(), content.length());
 }
 
 
@@ -279,25 +380,21 @@ void ESPWebDAV::sendContent(const String& content) {
 // ------------------------
 void ESPWebDAV::sendContent_P(PGM_P content) {
 // ------------------------
-	const char * footer = "\r\n";
 	size_t size = strlen_P(content);
-	
+
 	if(_chunked) {
-		char * chunkSize = (char *) malloc(11);
-		if(chunkSize) {
-			sprintf(chunkSize, "%x%s", size, footer);
-			client.write(chunkSize, strlen(chunkSize));
-			free(chunkSize);
-		}
+		char chunkHead[12];
+		int l = snprintf(chunkHead, sizeof(chunkHead), "%x\r\n", (unsigned) size);
+		client.write(chunkHead, l);
 	}
-	
-	client.write_P(content, size);
-	
+
+	if(size)
+		client.write_P(content, size);
+
 	if(_chunked) {
-		client.write(footer, 2);
-		if (size == 0) {
+		client.write("\r\n", 2);
+		if (size == 0)
 			_chunked = false;
-		}
 	}
 }
 
@@ -310,34 +407,125 @@ void ESPWebDAV::setContentLength(size_t len)	{
 }
 
 
-// ------------------------
-size_t ESPWebDAV::readBytesWithTimeout(uint8_t *buf, size_t bufSize) {
-// ------------------------
-	int timeout_ms = HTTP_MAX_POST_WAIT;
-	size_t numAvailable = 0;
-	while(!(numAvailable = client.available()) && client.connected() && timeout_ms--) 
-		delay(1);
 
-	if(!numAvailable)
-		return 0;
-
-	return client.read(buf, bufSize);
+// ------------------------
+void ESPWebDAV::sendContinueIfNeeded()	{
+// ------------------------
+	// client is holding the body back until we bless it
+	if(!expect100)
+		return;
+	client.write("HTTP/1.1 100 Continue\r\n\r\n", 25);
+	expect100 = false;
 }
 
 
-// ------------------------
-size_t ESPWebDAV::readBytesWithTimeout(uint8_t *buf, size_t bufSize, size_t numToRead) {
-// ------------------------
-	int timeout_ms = HTTP_MAX_POST_WAIT;
-	size_t numAvailable = 0;
-	
-	while(((numAvailable = client.available()) < numToRead) && client.connected() && timeout_ms--) 
-		delay(1);
 
-	if(!numAvailable)
-		return 0;
+// ------------------------
+size_t ESPWebDAV::readBytesWithTimeout(uint8_t *buf, size_t toRead) {
+// ------------------------
+	// Fills the buffer completely unless the stream stalls for
+	// HTTP_BODY_TIMEOUT_MS or the client disconnects with nothing buffered.
+	// (The old implementation returned whatever a single read() gave it -
+	// callers that assumed full blocks then corrupted uploads.)
+	size_t got = 0;
+	uint32_t deadline = millis() + HTTP_BODY_TIMEOUT_MS;
 
-	return client.read(buf, bufSize);
+	while(got < toRead && (int32_t)(deadline - millis()) > 0)	{
+		size_t avail = client.available();
+		if(!avail)	{
+			if(!client.connected())
+				break;
+			delay(1);
+			continue;
+		}
+
+		size_t chunk = toRead - got;
+		if(chunk > avail)
+			chunk = avail;
+		int r = client.read(buf + got, chunk);
+		if(r <= 0)	{
+			if(!client.connected())
+				break;
+			delay(1);
+			continue;
+		}
+
+		got += r;
+		deadline = millis() + HTTP_BODY_TIMEOUT_MS;	// progress resets the clock
+	}
+
+	return got;
 }
 
 
+
+// ------------------------
+long ESPWebDAV::readChunkSize()	{
+// ------------------------
+	// reads a "hex[;ext]\r\n" chunk-size line; skips blank lines
+	char line[16];
+	uint8_t idx = 0;
+	uint32_t deadline = millis() + HTTP_BODY_TIMEOUT_MS;
+
+	while((int32_t)(deadline - millis()) > 0)	{
+		int c = client.read();
+		if(c < 0)	{
+			if(!client.connected())
+				return -1;
+			delay(1);
+			continue;
+		}
+		if(c == '\n')	{
+			if(idx == 0)
+				continue;		// blank line between chunks
+			line[idx] = 0;
+			return strtol(line, NULL, 16);
+		}
+		if(c != '\r' && idx < sizeof(line) - 1)
+			line[idx++] = (char) c;
+	}
+	return -1;
+}
+
+
+
+// ------------------------
+void ESPWebDAV::drainBody() {
+// ------------------------
+	if(chunkedBody)	{
+		// handler did not finish a chunked body - can't resync, drop the link
+		keepClient = false;
+		return;
+	}
+
+	if(bodyRemaining == 0)
+		return;
+
+	// a big leftover body isn't worth reading through - just close
+	if(bodyRemaining > 16384)	{
+		keepClient = false;
+		bodyRemaining = 0;
+		return;
+	}
+
+	uint32_t deadline = millis() + 1000;
+	uint8_t sink[64];
+	while(bodyRemaining > 0 && (int32_t)(deadline - millis()) > 0)	{
+		size_t chunk = bodyRemaining > sizeof(sink) ? sizeof(sink) : bodyRemaining;
+		int r = client.read(sink, chunk);
+		if(r > 0)	{
+			bodyRemaining -= r;
+			deadline = millis() + 1000;
+		}
+		else	{
+			if(!client.connected())
+				return;
+			delay(1);
+		}
+	}
+
+	if(bodyRemaining > 0)	{
+		keepClient = false;
+		bodyRemaining = 0;
+	}
+}

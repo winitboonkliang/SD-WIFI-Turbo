@@ -2,47 +2,57 @@
 #include "sdControl.h"
 #include "pins.h"
 
-volatile long SDControl::_spiBlockoutTime = 0;
-bool SDControl::_weTookBus = false;
+volatile uint32_t SDControl::_spiBlockoutTime = 0;
+volatile bool SDControl::_weTookBus = false;
+
+// ISR must live in IRAM on current ESP8266 cores - a flash-resident ISR
+// crashes the moment it fires during a flash operation.
+void IRAM_ATTR SDControl::csSenseISR() {
+	if(!_weTookBus)
+		_spiBlockoutTime = millis() + SPI_BLOCKOUT_PERIOD;
+}
 
 void SDControl::setup() {
   // ----- GPIO -------
-	// Detect when other master uses SPI bus
-	pinMode(CS_SENSE, INPUT);
-	attachInterrupt(CS_SENSE, []() {
-		if(!_weTookBus)
-			_spiBlockoutTime = millis() + SPI_BLOCKOUT_PERIOD;
-	}, FALLING);
+	// Detect when other master uses SPI bus.
+	// INPUT_PULLUP: the old floating input picked up WiFi noise and caused
+	// phantom "printer is using the card" blockouts on standalone boards.
+	pinMode(CS_SENSE, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(CS_SENSE), csSenseISR, FALLING);
 
-	// wait for other master to assert SPI bus first
-	delay(SPI_BLOCKOUT_PERIOD);
+	// brief observation window at boot: an actively-used bus asserts CS
+	// within milliseconds. (was a hard delay(20000) - 20 seconds dead
+	// on every power-up)
+	delay(SD_BOOT_OBSERVE_MS);
 }
 
 // ------------------------
 void SDControl::takeBusControl()	{
 // ------------------------
 	_weTookBus = true;
-	//LED_ON;
-	pinMode(MISO_PIN, SPECIAL);	
-	pinMode(MOSI_PIN, SPECIAL);	
-	pinMode(SCLK_PIN, SPECIAL);	
+	pinMode(MISO_PIN, SPECIAL);
+	pinMode(MOSI_PIN, SPECIAL);
+	pinMode(SCLK_PIN, SPECIAL);
+	// preload HIGH so switching to OUTPUT never glitches CS low
+	digitalWrite(SD_CS, HIGH);
 	pinMode(SD_CS, OUTPUT);
 }
 
 // ------------------------
 void SDControl::relinquishBusControl()	{
 // ------------------------
-	pinMode(MISO_PIN, INPUT);	
-	pinMode(MOSI_PIN, INPUT);	
-	pinMode(SCLK_PIN, INPUT);	
-	pinMode(SD_CS, INPUT);
-	//LED_OFF;
+	pinMode(MISO_PIN, INPUT);
+	pinMode(MOSI_PIN, INPUT);
+	pinMode(SCLK_PIN, INPUT);
+	// keep the card deselected through a weak pull-up instead of floating;
+	// a real external master can still drive the line low
+	pinMode(SD_CS, INPUT_PULLUP);
 	_weTookBus = false;
 }
 
+// ------------------------
 bool SDControl::canWeTakeBus() {
-	if(millis() < _spiBlockoutTime) {
-    return false;
-  }
-  return true;
+// ------------------------
+	// rollover-safe compare (the old "millis() < blockout" broke after 49 days)
+	return (int32_t)(millis() - _spiBlockoutTime) >= 0;
 }

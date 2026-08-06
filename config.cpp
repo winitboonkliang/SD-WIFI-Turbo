@@ -13,11 +13,11 @@ int Config::loadSD() {
   SERIAL_ECHOLN("Going to load config from INI file");
 
   if(!sdcontrol.canWeTakeBus()) {
-    SERIAL_ECHOLN("Marlin is controling the bus");
+    SERIAL_ECHOLN("Another host is controlling the bus");
     return -1;
   }
   sdcontrol.takeBusControl();
-  
+
   if(!sdfat.begin(SD_CS, SPI_FULL_SPEED)) {
     SERIAL_ECHOLN("Initial SD failed");
     sdcontrol.relinquishBusControl();
@@ -31,9 +31,10 @@ int Config::loadSD() {
     return -3;
   }
 
-  // Get SSID and PASSWORD from file
+  // Get SSID and PASSWORD (and optional NAME / IP / GATEWAY / SUBNET / DNS)
   int rst = 0,step = 0;
   String buffer,sKEY,sValue;
+  IPAddress tmp;
   while (file.available()) { // check for EOF
     buffer = file.readStringUntil('\n');
     if(buffer.length() == 0) continue; // Empty line
@@ -41,7 +42,9 @@ int Config::loadSD() {
     int iS = buffer.indexOf('='); // Get the seperator
     if(iS < 0) continue; // Bad line
     sKEY = buffer.substring(0,iS);
+    sKEY.trim();
     sValue = buffer.substring(iS+1);
+    sValue.trim();
     if(sKEY == "SSID") {
       SERIAL_ECHOLN("INI file : SSID found");
       if(sValue.length()>0) {
@@ -66,11 +69,29 @@ int Config::loadSD() {
         goto FAIL;
       }
     }
-    else continue; // Bad line
+    else if(sKEY == "NAME" || sKEY == "HOSTNAME") {
+      if(sValue.length()>0) {
+        memset(_hostname, 0, sizeof(_hostname));
+        sValue.toCharArray(_hostname, sizeof(_hostname));
+        SERIAL_ECHO("INI file : NAME "); SERIAL_ECHOLN(_hostname);
+      }
+    }
+    else if(sKEY == "IP") {
+      if(tmp.fromString(sValue)) _ip = (uint32_t)tmp;
+    }
+    else if(sKEY == "GATEWAY") {
+      if(tmp.fromString(sValue)) _gw = (uint32_t)tmp;
+    }
+    else if(sKEY == "SUBNET") {
+      if(tmp.fromString(sValue)) _mask = (uint32_t)tmp;
+    }
+    else if(sKEY == "DNS") {
+      if(tmp.fromString(sValue)) _dns = (uint32_t)tmp;
+    }
+    else continue; // Unknown key
   }
   if(step != 2) { // We miss ssid or password
-    //memset(data,) // TODO: do we need to empty the data?
-    SERIAL_ECHOLN("Please check your SSDI or PASSWORD in ini file");
+    SERIAL_ECHOLN("Please check your SSID or PASSWORD in ini file");
     rst = -6;
     goto FAIL;
   }
@@ -82,27 +103,37 @@ int Config::loadSD() {
 }
 
 unsigned char Config::load() {
-  // Try to get the config from ini file
-  if(0 == loadSD())
-  {
-    return 1; // Return as connected before
-  }
-
-  SERIAL_ECHOLN("Going to load config from EEPROM");
-
+  // Always read EEPROM first - it may hold the web-set hostname and the
+  // last good credentials, even when an INI file is present.
   EEPROM.begin(EEPROM_SIZE);
   uint8_t *p = (uint8_t*)(&data);
-  for (int i = 0; i < sizeof(data); i++)
+  for (unsigned int i = 0; i < sizeof(data); i++)
   {
     *(p + i) = EEPROM.read(i);
   }
-  EEPROM.commit();
 
-  if(data.flag) {
-    SERIAL_ECHOLN("Going to use the old config to connect the network");
+  // validate appended hostname field (old images have 0xFF here)
+  if(data.flag2 != CONFIG_FLAG2_MAGIC) {
+    data.flag2 = 0;
+    memset(data.host, 0, sizeof(data.host));
   }
-  SERIAL_ECHOLN("We didn't connect the network before");
-  return data.flag;
+  else
+    data.host[sizeof(data.host) - 1] = 0;
+
+  bool eepromValid = (data.flag == 1);
+
+  // INI file (if present) overrides ssid/password and sets NAME/static-IP
+  if(0 == loadSD())
+  {
+    return 1;
+  }
+
+  if(!eepromValid) {
+    SERIAL_ECHOLN("We didn't connect the network before");
+    return 0;
+  }
+  SERIAL_ECHOLN("Going to use the old config to connect the network");
+  return 1;
 }
 
 char* Config::ssid() {
@@ -123,48 +154,78 @@ void Config::password(char* password) {
   strncpy(data.psw,password,WIFI_PASSWD_LEN);
 }
 
+const char* Config::hostname() {
+  if(data.flag2 == CONFIG_FLAG2_MAGIC && data.host[0])
+    return data.host;                       // set from the web UI
+  return _hostname[0] ? _hostname : HOSTNAME_DEFAULT;
+}
+
+void Config::setHostname(const char* n) {
+  if(n == NULL || !n[0]) return;
+  memset(data.host, 0, sizeof(data.host));
+  strncpy(data.host, n, sizeof(data.host) - 1);
+  data.flag2 = CONFIG_FLAG2_MAGIC;
+  save();
+}
+
+static const uint32_t VALID_BAUDS[] =
+  { 9600, 19200, 38400, 57600, 74880, 115200, 230400, 250000, 460800, 921600 };
+
+uint32_t Config::baud() {
+  for (unsigned int i = 0; i < sizeof(VALID_BAUDS)/sizeof(VALID_BAUDS[0]); i++)
+    if (data.sbaud == VALID_BAUDS[i]) return data.sbaud;
+  return 115200;  // old/erased EEPROM reads 0xFFFFFFFF -> default
+}
+
+void Config::setBaud(uint32_t b) {
+  data.sbaud = b;
+  save();
+}
+
+bool Config::hasStaticIP() {
+  return _ip != 0 && _gw != 0 && _mask != 0;
+}
+
 void Config::save(const char*ssid,const char*password) {
   if(ssid ==NULL || password==NULL)
     return;
 
-  EEPROM.begin(EEPROM_SIZE);
   data.flag = 1;
   strncpy(data.ssid, ssid, WIFI_SSID_LEN);
   strncpy(data.psw, password, WIFI_PASSWD_LEN);
-  uint8_t *p = (uint8_t*)(&data);
-  for (int i = 0; i < sizeof(data); i++)
-  {
-    EEPROM.write(i, *(p + i));
-  }
-  EEPROM.commit();
+  save();
 }
 
 void Config::save() {
-  if(data.ssid == NULL || data.psw == NULL)
-    return;
+  data.flag = 1;
 
   EEPROM.begin(EEPROM_SIZE);
-  data.flag = 1;
+  // only burn the flash sector when something actually changed
+  CONFIG_TYPE current;
+  uint8_t *c = (uint8_t*)(&current);
+  for (unsigned int i = 0; i < sizeof(current); i++)
+    *(c + i) = EEPROM.read(i);
+
+  if(memcmp(&current, &data, sizeof(data)) == 0)
+    return;
+
   uint8_t *p = (uint8_t*)(&data);
-  for (int i = 0; i < sizeof(data); i++)
+  for (unsigned int i = 0; i < sizeof(data); i++)
   {
     EEPROM.write(i, *(p + i));
   }
   EEPROM.commit();
 }
 
-// Save to ip address to sdcard
+// Save the ip address to sdcard as ip.gcode (M117 shows it on a printer LCD)
 int Config::save_ip(const char *ip) {
   SdFat sdfat;
 
-  SERIAL_ECHOLN("Going to save config to ip.gcode file");
-
   if(!sdcontrol.canWeTakeBus()) {
-    SERIAL_ECHOLN("Marlin is controling the bus");
     return -1;
   }
   sdcontrol.takeBusControl();
-  
+
   if(!sdfat.begin(SD_CS, SPI_FULL_SPEED)) {
     SERIAL_ECHOLN("Initial SD failed");
     sdcontrol.relinquishBusControl();
@@ -181,11 +242,13 @@ int Config::save_ip(const char *ip) {
     return -3;
   }
 
-  // Get SSID and PASSWORD from file
-  char buf[21] = "M117 ";
+  char buf[24] = "M117 ";
   strncat(buf,ip,15);
-  file.write(buf, 21);
+  strcat(buf,"\n");
+  file.write(buf, strlen(buf));
   file.close();
+  sdcontrol.relinquishBusControl();
+  return 0;
 }
 
 Config config;
