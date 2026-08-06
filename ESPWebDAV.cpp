@@ -86,14 +86,21 @@ static size_t jsonEscapeInto(char *dst, size_t cap, const char *src)	{
 bool ESPWebDAV::init(int chipSelectPin, SPISettings spiSettings, int serverPort) {
 // ------------------------
 	// start the wifi server
+	beginServer(serverPort);
+
+	// initialize the SD card
+	return initSD(chipSelectPin, spiSettings);
+}
+
+// ------------------------
+bool ESPWebDAV::beginServer(int serverPort) {
+// ------------------------
 	if(!server)	{
 		server = new WiFiServer(serverPort);
 		server->begin();
 		server->setNoDelay(true);
 	}
-
-	// initialize the SD card
-	return initSD(chipSelectPin, spiSettings);
+	return server != NULL;
 }
 
 // ------------------------

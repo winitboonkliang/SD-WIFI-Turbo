@@ -66,16 +66,25 @@ bool Network::start() {
   config.save_ip(sIp.c_str());
 
   SERIAL_ECHOLN("Going to start DAV server");
-  if(startDAVServer() < 0) return false;
+  startDAVServer();
   wifiConnecting = false;
 
   return true;
 }
 
 int Network::startDAVServer() {
+  // The TCP server ALWAYS comes up, even if the card is missing or another
+  // host (USB reader / printer) owns the SPI bus right now. Stock returned
+  // early here, so a board that booted with a busy bus answered pings but
+  // refused port 80 forever - looked bricked. SD is mounted on demand by
+  // handle() instead.
   if(!sdcontrol.canWeTakeBus()) {
-    return -1;
+    dav.beginServer(SERVER_PORT);
+    initFailed = true;
+    SERIAL_ECHOLN("WebDAV server started (SD busy - will mount on demand)");
+    return 0;
   }
+
   sdcontrol.takeBusControl();
 
   // start the SD DAV server

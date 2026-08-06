@@ -33,3 +33,14 @@ connections in 150 ms.
 
 Reproduce: `bench.ps1 -Ip <board-ip>`, plus the idle-conn probe (python socket
 open + concurrent curl) documented in the project notes.
+
+## SD card raw speed (same card, USB 2.0 reader on the PC)
+
+| Direction | Card via USB reader | Card via SD-WIFI (WiFi) | Board reaches |
+|---|---|---|---|
+| Read / download | 19.4 MB/s | ~1.0 MB/s | 5 % of card speed |
+| Write / upload | 3.3 MB/s | ~0.39 MB/s | 12 % of card speed |
+
+32 MB test file, unbuffered read (buffered reads report ~1.5 GB/s from OS cache -
+meaningless). Conclusion: the SD card is **not** the bottleneck for WiFi transfers.
+The ESP8285's single core (SPI + radio + TCP on one CPU) and the 2.4 GHz link are.

@@ -45,6 +45,9 @@ class ESPWebDAV	{
 	friend class FormatProgressPrint;
 public:
 	bool init(int chipSelectPin, SPISettings spiSettings, int serverPort);
+	// open the TCP port without touching the SPI bus (used when another host
+	// owns the card at boot - the web UI must still come up)
+	bool beginServer(int serverPort);
 	bool initSD(int chipSelectPin, SPISettings spiSettings);
 	bool startServer();
 	bool sdHealthy();
