@@ -104,6 +104,34 @@ bool ESPWebDAV::beginServer(int serverPort) {
 }
 
 // ------------------------
+bool ESPWebDAV::cardPresent(int chipSelectPin) {
+// ------------------------
+	// Send CMD0 by hand at 250 kHz and see whether anything drives MISO low.
+	// An empty slot leaves MISO pulled high (0xFF forever), so this returns
+	// false in well under a millisecond instead of the ~8 s SdFat spends
+	// retrying a full init sequence.
+	SPI.begin();
+	SPI.beginTransaction(SPISettings(250000, MSBFIRST, SPI_MODE0));
+
+	digitalWrite(chipSelectPin, HIGH);
+	for(uint8_t i = 0; i < 10; i++) SPI.transfer(0xFF);	// 80 clocks, CS high
+
+	digitalWrite(chipSelectPin, LOW);
+	static const uint8_t CMD0[] = { 0x40, 0, 0, 0, 0, 0x95 };	// GO_IDLE_STATE + CRC
+	for(uint8_t i = 0; i < sizeof(CMD0); i++) SPI.transfer(CMD0[i]);
+
+	uint8_t resp = 0xFF;
+	for(uint8_t i = 0; i < 16 && resp == 0xFF; i++)
+		resp = SPI.transfer(0xFF);
+
+	digitalWrite(chipSelectPin, HIGH);
+	SPI.transfer(0xFF);
+	SPI.endTransaction();
+
+	return resp != 0xFF;	// any R1 response means a card is in the slot
+}
+
+// ------------------------
 bool ESPWebDAV::initSD(int chipSelectPin, SPISettings spiSettings) {
 	// (re)initialize the SD card - also used for hot re-mount after errors
 	bool ok = sd.begin(chipSelectPin, spiSettings);

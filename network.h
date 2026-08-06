@@ -7,10 +7,14 @@
 
 #define WIFI_CONNECT_TIMEOUT 30000UL
 
+// background SD re-mount pacing (an empty slot makes sd.begin() block ~3 s)
+#define SD_RETRY_MIN_MS  1500UL
+#define SD_RETRY_MAX_MS  6000UL
+
 class Network {
 public:
   Network() { initFailed = false; wifiConnecting = true; wifiConnected = false;
-              lastStatusPoll = 0; lastSdRetry = 0; }
+              lastStatusPoll = 0; lastSdRetry = 0; sdRetryDelay = SD_RETRY_MIN_MS; }
   bool start();
   int startDAVServer();
   bool isConnected();
@@ -23,6 +27,7 @@ private:
   bool initFailed;
   uint32_t lastStatusPoll;
   uint32_t lastSdRetry;
+  uint32_t sdRetryDelay;
 };
 
 extern Network network;

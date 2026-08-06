@@ -123,23 +123,37 @@ void Network::handle() {
 
   // cheap connection bookkeeping every loop - no SD access inside
   dav.maintainClient();
+
+  // SD never came up, or died since (card swapped / glitched): re-mount in
+  // the BACKGROUND only. sd.begin() on an empty slot blocks ~3 s, so doing it
+  // with a client waiting stalled every request past its timeout. Back off
+  // 3 s -> 30 s while the slot stays empty so an unused board stays snappy;
+  // a card that appears is picked up within one interval, no reboot needed.
+  if((initFailed || !dav.sdHealthy()) && !dav.requestPending()
+     && now - lastSdRetry >= sdRetryDelay && sdcontrol.canWeTakeBus()) {
+    lastSdRetry = now;
+    sdcontrol.takeBusControl();
+    // cheap presence check first - the expensive mount only runs when a card
+    // is actually in the slot
+    bool fixed = dav.cardPresent(SD_CS) && dav.initSD(SD_CS, SPI_FULL_SPEED);
+    sdcontrol.relinquishBusControl();
+    initFailed = !fixed;
+    if(fixed) {
+      sdRetryDelay = SD_RETRY_MIN_MS;
+      SERIAL_ECHOLN("SD card mounted");
+    }
+    else {
+      sdRetryDelay *= 2;
+      if(sdRetryDelay > SD_RETRY_MAX_MS) sdRetryDelay = SD_RETRY_MAX_MS;
+    }
+    lastSdRetry = millis();   // a real mount attempt can take seconds
+  }
+
   if(!dav.requestPending()) return;
 
-  // SD never came up, or died since (card swapped / glitched):
-  // try a re-mount at most every 3s - hot swap now works without reboot
   if(initFailed || !dav.sdHealthy()) {
-    bool fixed = false;
-    if(now - lastSdRetry >= 3000 && sdcontrol.canWeTakeBus()) {
-      lastSdRetry = now;
-      sdcontrol.takeBusControl();
-      fixed = dav.initSD(SD_CS, SPI_FULL_SPEED);
-      sdcontrol.relinquishBusControl();
-      initFailed = !fixed;
-    }
-    if(!fixed) {
-      dav.rejectClient("SD card not ready");
-      return;
-    }
+    dav.rejectClient("SD card not ready");
+    return;
   }
 
   // has other master been using the bus in last few seconds

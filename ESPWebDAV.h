@@ -49,6 +49,9 @@ public:
 	// owns the card at boot - the web UI must still come up)
 	bool beginServer(int serverPort);
 	bool initSD(int chipSelectPin, SPISettings spiSettings);
+	// ~1 ms "is a card physically there?" probe. A full sd.begin() on an empty
+	// slot blocks for SECONDS, which stalls the whole server.
+	bool cardPresent(int chipSelectPin);
 	bool startServer();
 	bool sdHealthy();
 	// connection bookkeeping - never touches the SD bus, safe to call every loop
