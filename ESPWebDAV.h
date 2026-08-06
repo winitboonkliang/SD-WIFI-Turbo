@@ -13,6 +13,12 @@ extern uint32_t g_minFreeHeap;
 // web rename so the response gets out before rebooting)
 extern uint32_t g_restartAt;
 
+// SD diagnostics surfaced in /?api=status (tells "empty slot" apart from
+// "card there but mount failed" without needing a serial cable)
+extern uint8_t  g_sdProbe;    // 1 = CMD0 answered, 0 = slot looks empty
+extern uint8_t  g_sdErr;      // SdFat errorCode() from the last failed mount
+extern uint16_t g_sdTries;    // how many mount attempts have run
+
 // Set to 1 (or build with -D DAV_DEBUG=1) for verbose per-request serial logging.
 // Keep 0 for production: serial prints inside the request path slow everything down.
 #ifndef DAV_DEBUG
@@ -52,6 +58,7 @@ public:
 	// ~1 ms "is a card physically there?" probe. A full sd.begin() on an empty
 	// slot blocks for SECONDS, which stalls the whole server.
 	bool cardPresent(int chipSelectPin);
+	uint8_t lastSdError() { return sd.card()->errorCode(); }
 	bool startServer();
 	bool sdHealthy();
 	// connection bookkeeping - never touches the SD bus, safe to call every loop

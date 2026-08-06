@@ -17,6 +17,9 @@
 
 uint32_t g_minFreeHeap = 0xFFFFFFFF;
 uint32_t g_restartAt = 0;
+uint8_t  g_sdProbe = 0;
+uint8_t  g_sdErr = 0;
+uint16_t g_sdTries = 0;
 
 // Print sink for sd.wipe(): forwards each progress dot (one per 256 sector
 // writes) into the chunked HTTP response so the browser can draw a real
@@ -604,7 +607,7 @@ void ESPWebDAV::handleStatusJson()	{
 	}
 
 	int n = snprintf_P(s_scratch, sizeof(s_scratch),
-		PSTR("{\"fw\":\"%s\",\"build\":\"%s\",\"name\":\"%s\",\"ssid\":\"%s\",\"baud\":%lu,\"up\":%lu,\"heap\":%lu,\"minheap\":%lu,\"maxblk\":%lu,\"frag\":%u,\"sketch\":%lu,\"flashfree\":%lu,\"flashsize\":%lu,\"rssi\":%d,\"cpu\":%u,\"sd\":%u,\"busy\":%u,\"cardmb\":%lu,\"cardtype\":\"%s\"}"),
+		PSTR("{\"fw\":\"%s\",\"build\":\"%s\",\"name\":\"%s\",\"ssid\":\"%s\",\"baud\":%lu,\"up\":%lu,\"heap\":%lu,\"minheap\":%lu,\"maxblk\":%lu,\"frag\":%u,\"sketch\":%lu,\"flashfree\":%lu,\"flashsize\":%lu,\"rssi\":%d,\"cpu\":%u,\"sd\":%u,\"busy\":%u,\"cardmb\":%lu,\"cardtype\":\"%s\",\"probe\":%u,\"sderr\":%u,\"sdtries\":%u}"),
 		FW_VERSION, FW_BUILD, config.hostname(), ssidEsc, (unsigned long) config.baud(),
 		(unsigned long)(millis() / 1000UL),
 		(unsigned long) heap, (unsigned long) minHeap,
@@ -613,7 +616,8 @@ void ESPWebDAV::handleStatusJson()	{
 		(int) WiFi.RSSI(), (unsigned) ESP.getCpuFreqMHz(),
 		(_cardSizeMB > 0 && sdHealthy()) ? 1 : 0,
 		sdcontrol.canWeTakeBus() ? 0 : 1,
-		(unsigned long) _cardSizeMB, ct);
+		(unsigned long) _cardSizeMB, ct,
+		(unsigned) g_sdProbe, (unsigned) g_sdErr, (unsigned) g_sdTries);
 	if(n < 0) n = 0;
 	if((size_t)n >= sizeof(s_scratch)) n = sizeof(s_scratch) - 1;
 

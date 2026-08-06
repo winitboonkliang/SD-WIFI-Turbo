@@ -135,7 +135,10 @@ void Network::handle() {
     sdcontrol.takeBusControl();
     // cheap presence check first - the expensive mount only runs when a card
     // is actually in the slot
-    bool fixed = dav.cardPresent(SD_CS) && dav.initSD(SD_CS, SPI_FULL_SPEED);
+    g_sdTries++;
+    g_sdProbe = dav.cardPresent(SD_CS) ? 1 : 0;
+    bool fixed = g_sdProbe && dav.initSD(SD_CS, SPI_FULL_SPEED);
+    g_sdErr = dav.lastSdError();
     sdcontrol.relinquishBusControl();
     initFailed = !fixed;
     if(fixed) {
