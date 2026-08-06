@@ -156,7 +156,9 @@ DNS=192.168.1.1
 
 ## Measured (board #1, PC and board both on WiFi)
 
-- **Download (GET): ~1 MB/s** · **Upload (PUT): ~390-437 KB/s** · PROPFIND: ~60-108 ms
+- **Download (GET): 907 KB/s** (peak 1,017) · **Upload (PUT): 442 KB/s** · PROPFIND: 71 ms
+- Same board and card measured before and after flashing: download **×14.7**,
+  upload **×2.7** vs the factory firmware
 - Requires the **custom lwIP build** (see below). With the stock prebuilt lwIP
   the download caps at ~145 KB/s (`TCP_SND_BUF = 2×MSS` = 2.9 KB in flight).
 - Heap during transfers: ~25 KB minimum, 2 % fragmentation - healthy margins.

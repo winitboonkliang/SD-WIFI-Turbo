@@ -1,9 +1,9 @@
-<svg width="920" height="440" viewBox="0 0 920 440" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, system-ui, sans-serif">
-  <rect width="920" height="440" rx="14" fill="#0b101d"/>
+<svg width="920" height="460" viewBox="0 0 920 460" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, system-ui, sans-serif">
+  <rect width="920" height="460" rx="14" fill="#0b101d"/>
 
   <!-- title block -->
   <text x="40" y="46" fill="#ffffff" font-size="20" font-weight="700">WebDAV throughput — stock vs turbo firmware</text>
-  <text x="40" y="70" fill="#9fb0cc" font-size="13">2 MB transfer · same board, same card, same WiFi (FYSETC SD-WIFI rev 2.1, ESP8285)</text>
+  <text x="40" y="70" fill="#9fb0cc" font-size="13">2 MB transfer · same board, same 29 GB card, same WiFi (FYSETC SD-WIFI rev 2.1, ESP8285)</text>
 
   <!-- legend -->
   <g font-size="12">
@@ -29,26 +29,28 @@
   </g>
   <line x1="170" y1="100" x2="170" y2="330" stroke="#2a3752" stroke-width="1.5"/>
 
-  <!-- Download group: stock 62 -> 43px, turbo 1000 -> 700px -->
+  <!-- Download: stock 62 -> 43px, turbo 907 -> 635px -->
   <text x="152" y="146" fill="#c9d6ea" font-size="14" font-weight="600" text-anchor="end">Download</text>
   <path d="M170 118 h39 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-39 z" fill="#d95926"/>
-  <text x="219" y="132" fill="#e7edf7" font-size="12" dominant-baseline="middle">62 KB/s</text>
-  <path d="M170 142 h696 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-696 z" fill="#3987e5"/>
-  <text x="860" y="156" fill="#0b101d" font-size="12" font-weight="700" text-anchor="end" dominant-baseline="middle">~1,000 KB/s</text>
-  <text x="770" y="185" fill="#ffffff" font-size="15" font-weight="700" text-anchor="end">×16 faster</text>
+  <text x="219" y="132" fill="#e7edf7" font-size="12" dominant-baseline="middle">62 KB/s  ·  34.0 s</text>
+  <path d="M170 142 h631 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-631 z" fill="#3987e5"/>
+  <text x="795" y="156" fill="#0b101d" font-size="12" font-weight="700" text-anchor="end" dominant-baseline="middle">907 KB/s · 2.3 s</text>
+  <text x="700" y="186" fill="#ffffff" font-size="15" font-weight="700" text-anchor="end">×14.7 faster</text>
 
-  <!-- Upload group: stock 165 -> 115px, turbo 390 -> 273px -->
+  <!-- Upload: stock 165 -> 115px, turbo 442 -> 309px -->
   <text x="152" y="248" fill="#c9d6ea" font-size="14" font-weight="600" text-anchor="end">Upload</text>
   <path d="M170 220 h111 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-111 z" fill="#d95926"/>
-  <text x="291" y="234" fill="#e7edf7" font-size="12" dominant-baseline="middle">165 KB/s</text>
-  <path d="M170 244 h269 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-269 z" fill="#3987e5"/>
-  <text x="449" y="258" fill="#e7edf7" font-size="12" dominant-baseline="middle">~390 KB/s <tspan fill="#9fb0cc">(×2.4)</tspan></text>
+  <text x="291" y="234" fill="#e7edf7" font-size="12" dominant-baseline="middle">165 KB/s  ·  12.7 s</text>
+  <path d="M170 244 h305 a4 4 0 0 1 4 4 v12 a4 4 0 0 1 -4 4 h-305 z" fill="#3987e5"/>
+  <text x="485" y="258" fill="#e7edf7" font-size="12" dominant-baseline="middle">442 KB/s · 4.7 s <tspan fill="#9fb0cc">(×2.7)</tspan></text>
 
-  <!-- extra wins row -->
-  <g font-size="12" fill="#9fb0cc">
-    <text x="170" y="300">Also: folder listing ×1.8 · boot 20 s → 4 s · idle-connection hang (permanent on stock) → eliminated</text>
+  <!-- secondary wins -->
+  <g font-size="12.5" fill="#9fb0cc">
+    <text x="170" y="298">Folder listing 105 → 71 ms · small files 7.5 → 9.9 /s · boot 20 s → 4 s</text>
+    <text x="170" y="320" fill="#c9d6ea">Idle browser connection: stock hangs the board until power-cycle → turbo answers in 62 ms</text>
   </g>
 
   <!-- footer -->
-  <text x="40" y="414" fill="#5c6f90" font-size="11">Measured 2026-08-06 with curl · full method &amp; raw numbers in benchmark_results.md · github.com/winitboonkliang/SD-WIFI-Turbo</text>
+  <text x="40" y="404" fill="#5c6f90" font-size="11">Measured 2026-08-06 with curl on one board before and after flashing · peak download observed 1,017 KB/s</text>
+  <text x="40" y="424" fill="#5c6f90" font-size="11">Raw numbers and method in benchmark_results.md · github.com/winitboonkliang/SD-WIFI-Turbo</text>
 </svg>

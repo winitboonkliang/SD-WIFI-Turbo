@@ -1,30 +1,39 @@
 # Stock vs Turbo — measured results (same board, same card, same WiFi)
 
-Board #2 (MAC d4:8c:49:02:52:38, 192.168.0.120, RSSI -61..-66), 29 GB SDHC card,
-2 MB random payload, curl from a WiFi PC via VPN_AP. Stock = factory firmware
-(now archived as firmware/stock_backup_d48c49025238.bin). Turbo = 2.1-turbo
-build Aug 6 07:51 with custom lwIP (8×MSS). 2026-08-06.
+Board #2 (MAC d4:8c:49:02:52:38, 192.168.0.120, RSSI -58..-66), 29 GB SDHC card,
+2 MB random payload, curl from a WiFi PC. Stock = the factory firmware that
+shipped on this board (archived as firmware/stock_backup_d48c49025238.bin);
+turbo = 2.1-turbo with the custom 16×MSS lwIP. Both runs on the same hardware
+and card, 2026-08-06.
 
 | Test | Stock | Turbo | Gain |
 |---|---|---|---|
-| GET 2 MB (download) | 61.8 KB/s (34.0 s) | **~1,000 KB/s (2.1 s)**¹⁶ | **×16.2** |
-| PUT 2 MB (upload) | 165 KB/s (12.7 s) | **~390 KB/s (5.1 s)** | **×2.4** |
-| PROPFIND / Depth:1 ×10 | 105 ms avg / 123 worst | **59 ms avg / 77 worst** | ×1.8 |
+| GET 2 MB (download) | 61.8 KB/s (34.0 s) | **907 KB/s (2.3 s)**¹ | **×14.7** |
+| PUT 2 MB (upload) | 165 KB/s (12.7 s) | **442 KB/s (4.7 s)** | **×2.7** |
+| PROPFIND / Depth:1 ×10 | 105 ms avg / 123 worst | **71 ms avg / 91 worst** | ×1.5 |
 | 10 × 4 KB PUT storm | 7.5 files/s | **9.9 files/s** | ×1.3 |
 | MD5 integrity 2 MB | match | match | |
 | GET /nonexistent | 404 in 57 ms | 404 in 31 ms | |
 | **1 idle connection parked** | **board hangs: every request times out** | 207 in 62 ms | **fixed** |
 | after idle conn closes again | **still dead — permanent until power cycle** | healthy | **fixed** |
+| 20 rapid requests, no card | (n/a — hangs earlier) | 0 failed, 0.8 s total² | |
 | Boot to ready | ~20 s hard delay in code (`delay(20000)`) | ~3-5 s | ×4-6 |
-| SD card hot-insert | needs reboot | auto-mounts in ≤3 s | fixed |
-| Heap during transfers | n/a | 33.9k idle / 14.5k min / frag 30 % | healthy |
+| SD card hot-insert | needs reboot | auto-mounts, no reboot | fixed |
+| Heap during transfers | n/a | 33.1k idle / 7.7k min / frag 37 % | see below |
 
-¹⁶ Final build uses TCP_SND_BUF = 16×MSS: GET measured 997 & 1,017 KB/s in
-back-to-back runs, min free heap 12.2 KB under sustained load (frag 6 %).
-The earlier 8×MSS build measured 656-698 KB/s.
+¹ Run-to-run spread on the same board was 907–1,017 KB/s depending on RSSI;
+the table quotes the most recent (conservative) run. The 8×MSS build measured
+656–698 KB/s, and the stock prebuilt lwIP (2×MSS) caps at ~145 KB/s.
 
-Board #1 turbo 8×MSS (different session, RSSI -58..-65): GET 698 KB/s,
-PUT 437 KB/s, PROPFIND 108 ms - consistent within WiFi variance.
+² Regression suite run against a board with **no card inserted** — the worst
+case. Before the empty-slot fixes this suite showed 8 s timeouts and 3/20
+failures; see the "empty card slot" commit.
+
+**Heap note:** 16×MSS buys the top-end download speed but the minimum free heap
+observed under a sustained 2 MB transfer is 7.7 KB (guard trips at 4 KB).
+That is a working margin, not a comfortable one. For boards that must run for
+weeks unattended, rebuilding lwIP with 12×MSS trades roughly 10–15 % of
+download speed for about 6 KB more headroom.
 
 The idle-connection row is the everyday killer: browsers routinely open spare
 connections, so simply *browsing* the stock board wedges it until power cycle.
