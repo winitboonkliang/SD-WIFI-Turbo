@@ -125,7 +125,7 @@ DNS=192.168.1.1
 
 ## Measured (board #1, PC and board both on WiFi)
 
-- **Download (GET): ~700 KB/s** · **Upload (PUT): ~437 KB/s** · PROPFIND: ~108 ms
+- **Download (GET): ~1 MB/s** · **Upload (PUT): ~390-437 KB/s** · PROPFIND: ~60-108 ms
 - Requires the **custom lwIP build** (see below). With the stock prebuilt lwIP
   the download caps at ~145 KB/s (`TCP_SND_BUF = 2×MSS` = 2.9 KB in flight).
 - Heap during transfers: ~25 KB minimum, 2 % fragmentation - healthy margins.
@@ -133,15 +133,15 @@ DNS=192.168.1.1
   (`flashsize` reports 2097152) - a 2 MB layout with even more OTA headroom
   is possible later.
 
-## Custom lwIP build (the 4.8× download unlock)
+## Custom lwIP build (the ×16 download unlock)
 
 The framework's prebuilt `liblwip2-1460-feat.a` hardcodes a 2-segment TCP send
-buffer. We rebuild it with `TCP_SND_BUF = 8×MSS`, `TCP_WND = 6×MSS`:
+buffer. We rebuild it with `TCP_SND_BUF = 16×MSS`, `TCP_WND = 6×MSS`:
 
 - One-time (or after any PlatformIO framework update):
   run [tools/rebuild_lwip2.sh](tools/rebuild_lwip2.sh) inside WSL, then
   `pio run -t clean && pio run`.
-- Shortcut: copy the prebuilt [tools/liblwip2-1460-feat-8xMSS.a](tools/liblwip2-1460-feat-8xMSS.a)
+- Shortcut: copy the prebuilt [tools/liblwip2-1460-feat-16xMSS.a](tools/liblwip2-1460-feat-16xMSS.a)
   over `~/.platformio/packages/framework-arduinoespressif8266/tools/sdk/lib/liblwip2-1460-feat.a`
   (a `.orig` backup of the stock lib is kept beside it after the script runs).
 

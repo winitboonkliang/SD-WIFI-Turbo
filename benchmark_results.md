@@ -7,8 +7,8 @@ build Aug 6 07:51 with custom lwIP (8×MSS). 2026-08-06.
 
 | Test | Stock | Turbo | Gain |
 |---|---|---|---|
-| GET 2 MB (download) | 61.8 KB/s (34.0 s) | **656 KB/s (3.2 s)** | **×10.6** |
-| PUT 2 MB (upload) | 165 KB/s (12.7 s) | **411 KB/s (5.1 s)** | **×2.5** |
+| GET 2 MB (download) | 61.8 KB/s (34.0 s) | **~1,000 KB/s (2.1 s)**¹⁶ | **×16.2** |
+| PUT 2 MB (upload) | 165 KB/s (12.7 s) | **~390 KB/s (5.1 s)** | **×2.4** |
 | PROPFIND / Depth:1 ×10 | 105 ms avg / 123 worst | **59 ms avg / 77 worst** | ×1.8 |
 | 10 × 4 KB PUT storm | 7.5 files/s | **9.9 files/s** | ×1.3 |
 | MD5 integrity 2 MB | match | match | |
@@ -19,8 +19,12 @@ build Aug 6 07:51 with custom lwIP (8×MSS). 2026-08-06.
 | SD card hot-insert | needs reboot | auto-mounts in ≤3 s | fixed |
 | Heap during transfers | n/a | 33.9k idle / 14.5k min / frag 30 % | healthy |
 
-Board #1 turbo (different session, RSSI -58..-65): GET 698 KB/s, PUT 437 KB/s,
-PROPFIND 108 ms - consistent with board #2 within WiFi variance.
+¹⁶ Final build uses TCP_SND_BUF = 16×MSS: GET measured 997 & 1,017 KB/s in
+back-to-back runs, min free heap 12.2 KB under sustained load (frag 6 %).
+The earlier 8×MSS build measured 656-698 KB/s.
+
+Board #1 turbo 8×MSS (different session, RSSI -58..-65): GET 698 KB/s,
+PUT 437 KB/s, PROPFIND 108 ms - consistent within WiFi variance.
 
 The idle-connection row is the everyday killer: browsers routinely open spare
 connections, so simply *browsing* the stock board wedges it until power cycle.
