@@ -88,6 +88,13 @@ int Config::loadSD() {
     else if(sKEY == "DNS") {
       if(tmp.fromString(sValue)) _dns = (uint32_t)tmp;
     }
+    else if(sKEY == "BLOCKOUT") {
+      long b = sValue.toInt();
+      if(b >= BLOCKOUT_MIN_S && b <= BLOCKOUT_MAX_S) {
+        data.blockout = (uint16_t) b;
+        SERIAL_ECHO("INI file : BLOCKOUT "); SERIAL_ECHOLN(data.blockout);
+      }
+    }
     else continue; // Unknown key
   }
   if(step != 2) { // We miss ssid or password
@@ -179,6 +186,18 @@ uint32_t Config::baud() {
 
 void Config::setBaud(uint32_t b) {
   data.sbaud = b;
+  save();
+}
+
+uint16_t Config::blockoutSec() {
+  if (data.blockout >= BLOCKOUT_MIN_S && data.blockout <= BLOCKOUT_MAX_S)
+    return data.blockout;
+  return BLOCKOUT_DEFAULT_S;   // erased EEPROM reads 0xFFFF
+}
+
+void Config::setBlockoutSec(uint16_t s) {
+  if (s < BLOCKOUT_MIN_S || s > BLOCKOUT_MAX_S) return;
+  data.blockout = s;
   save();
 }
 

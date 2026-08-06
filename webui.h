@@ -147,6 +147,9 @@ footer b{color:var(--tx);font-weight:600;margin-left:4px;font-variant-numeric:ta
  <div class="sec"><label>SERIAL PORT (USB / gcode link)</label>
   <div class="frow"><select id="sBaud"><option>9600</option><option>19200</option><option>38400</option><option>57600</option><option>74880</option><option>115200</option><option>230400</option><option>250000</option><option>460800</option><option>921600</option></select><button class="pri" id="sBaudGo">Apply</button></div>
   <div class="hint">Applies immediately and persists. Boot messages always start at 115200, then switch to this rate.</div></div>
+ <div class="sec"><label>PRINTER / CARD-READER SHARING</label>
+  <div class="frow"><select id="sBlk"><option value="3">3 s - fastest WiFi, printer idle only</option><option value="5">5 s</option><option value="10">10 s - default</option><option value="20">20 s</option><option value="30">30 s - safe during long prints</option><option value="60">60 s - safest</option></select><button class="pri" id="sBlkGo">Apply</button></div>
+  <div class="hint">How long the board keeps off the SD bus after the printer (or a USB reader) touches the card. The card has one bus and no arbitration line, so the two masters take turns: shorter = uploads squeeze in sooner between printer reads, longer = safer while a print is running. Applies immediately.</div></div>
  <div class="sec"><label>FIRMWARE UPDATE (OTA)</label>
   <div class="frow"><button class="pri" id="bO" style="flex:1">&#9881; Choose firmware .bin &amp; flash</button></div>
   <div class="hint">File is validated before flashing (ESP8266 magic byte + size check on both sides). Running now: <span id="sFw">-</span></div></div>
@@ -255,12 +258,13 @@ $('bDel').onclick=function(){if(!sel.size)return;
    .then(function(r){if(r.ok)okc++;next()})
    .catch(function(){next()})}
   next()})};
-var curName='',curSsid='',curBaud=115200,curStat=null;
+var curName='',curSsid='',curBaud=115200,curBlk=10,curStat=null;
 function sysHtml(j){return '&#128190; Flash/ROM: '+(j.sketch/1024).toFixed(0)+' KB used / '+(j.flashsize/1024).toFixed(0)+' KB &middot; '+(j.flashfree/1024).toFixed(0)+' KB free for OTA<br>'
  +'&#129504; RAM: '+(j.heap/1024).toFixed(1)+'k free &middot; min '+(j.minheap/1024).toFixed(1)+'k &middot; block '+(j.maxblk/1024).toFixed(1)+'k &middot; frag '+j.frag+'%<br>'
  +'&#9201; CPU '+j.cpu+' MHz &middot; uptime '+up2(j.up)}
 function openSettings(){$('sName').value=curName;$('sSsid').value=curSsid;$('sPass').value='';
  $('sBaud').value=String(curBaud);
+ $('sBlk').value=String(curBlk);
  if(curStat)$('sSys').innerHTML=sysHtml(curStat);
  $('smask').style.display='flex'}
 function closeSettings(){$('smask').style.display='none'}
@@ -283,6 +287,11 @@ $('sWifiGo').onclick=function(){var ss=$('sSsid').value.trim(),pw=$('sPass').val
   toast('Connecting to "'+ss+'" - board restarting... page reloads in 12 s','ok');
   setTimeout(function(){location.reload()},12000)})
  .catch(function(){toast('Save failed','err')})};
+$('sBlkGo').onclick=function(){var s=$('sBlk').value;
+ fetch('/?api=blockout&sec='+s,{method:'POST'}).then(function(r){return r.json()}).then(function(j){
+  if(!j.ok)throw 0;curBlk=j.blockout;
+  toast('Bus blockout now '+j.blockout+' s','ok')})
+ .catch(function(){toast('Blockout change failed','err')})};
 $('sBaudGo').onclick=function(){var b=$('sBaud').value;
  fetch('/?api=serial&baud='+b,{method:'POST'}).then(function(r){return r.json()}).then(function(j){
   if(!j.ok)throw 0;curBaud=j.baud;
@@ -373,7 +382,7 @@ function status(){if(uploading){setTimeout(status,3000);return}
  fetch('/?api=status',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
   $('fw').textContent='FW '+j.fw+(j.build?' · '+j.build:'');
   $('sFw').textContent=j.fw+(j.build?' · '+j.build:'');
-  curName=j.name;curSsid=j.ssid||'';curBaud=j.baud||115200;curStat=j;
+  curName=j.name;curSsid=j.ssid||'';curBaud=j.baud||115200;curBlk=j.blockout||10;curStat=j;
   if($('smask').style.display==='flex')$('sSys').innerHTML=sysHtml(j);
   $('cN').textContent=j.name;document.title=j.name+' - SD-WIFI';
   $('cI').textContent=location.hostname;

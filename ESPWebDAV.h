@@ -90,6 +90,7 @@ protected:
 	void handleSetName();
 	void handleSetWifi();
 	void handleSetSerial();
+	void handleSetBlockout();
 	void handleOtaUpdate();
 	void handleGet(ResourceType resource, bool isGet);
 	void handlePut(ResourceType resource);

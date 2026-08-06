@@ -25,7 +25,13 @@ typedef struct config_type
   unsigned char flag2;  // CONFIG_FLAG2_MAGIC when host[] below is valid
   char host[HOSTNAME_LEN];
   uint32_t sbaud;       // serial baud; validated against a whitelist on read
+  uint16_t blockout;    // seconds to stay off the SPI bus after another
+                        // master touches the card; 0xFFFF (erased) -> default
 }CONFIG_TYPE;
+
+#define BLOCKOUT_DEFAULT_S  10
+#define BLOCKOUT_MIN_S      1
+#define BLOCKOUT_MAX_S      300
 
 class Config	{
 public:
@@ -45,6 +51,9 @@ public:
 
   uint32_t baud();                   // whitelisted, defaults to 115200
   void setBaud(uint32_t b);          // persists to EEPROM (web settings)
+
+  uint16_t blockoutSec();            // range-checked, defaults to 10 s
+  void setBlockoutSec(uint16_t s);   // persists to EEPROM (web settings)
   bool hasStaticIP();
   IPAddress staticIP()  { return IPAddress(_ip);   }
   IPAddress gateway()   { return IPAddress(_gw);   }

@@ -209,6 +209,8 @@ void ESPWebDAV::handleReject(const char *rejectMessage)	{
 			return handleSetWifi();
 		if(queryString.indexOf("api=serial") >= 0)
 			return handleSetSerial();
+		if(queryString.indexOf("api=blockout") >= 0)
+			return handleSetBlockout();
 	}
 
 	// handle properties - fake a single-file listing so Explorer shows the reason
@@ -294,11 +296,13 @@ void ESPWebDAV::handleRequest(const char *blank)	{
 	if(method.equals("POST") && queryString.indexOf("api=ota") >= 0)
 		return handleOtaUpdate();
 
-	// web settings: wifi credentials / serial baud
+	// web settings: wifi credentials / serial baud / bus blockout
 	if(method.equals("POST") && queryString.indexOf("api=wifi") >= 0)
 		return handleSetWifi();
 	if(method.equals("POST") && queryString.indexOf("api=serial") >= 0)
 		return handleSetSerial();
+	if(method.equals("POST") && queryString.indexOf("api=blockout") >= 0)
+		return handleSetBlockout();
 
 	// handle file create/uploads
 	if(method.equals("PUT"))
@@ -607,7 +611,7 @@ void ESPWebDAV::handleStatusJson()	{
 	}
 
 	int n = snprintf_P(s_scratch, sizeof(s_scratch),
-		PSTR("{\"fw\":\"%s\",\"build\":\"%s\",\"name\":\"%s\",\"ssid\":\"%s\",\"baud\":%lu,\"up\":%lu,\"heap\":%lu,\"minheap\":%lu,\"maxblk\":%lu,\"frag\":%u,\"sketch\":%lu,\"flashfree\":%lu,\"flashsize\":%lu,\"rssi\":%d,\"cpu\":%u,\"sd\":%u,\"busy\":%u,\"cardmb\":%lu,\"cardtype\":\"%s\",\"probe\":%u,\"sderr\":%u,\"sdtries\":%u}"),
+		PSTR("{\"fw\":\"%s\",\"build\":\"%s\",\"name\":\"%s\",\"ssid\":\"%s\",\"baud\":%lu,\"up\":%lu,\"heap\":%lu,\"minheap\":%lu,\"maxblk\":%lu,\"frag\":%u,\"sketch\":%lu,\"flashfree\":%lu,\"flashsize\":%lu,\"rssi\":%d,\"cpu\":%u,\"sd\":%u,\"busy\":%u,\"cardmb\":%lu,\"cardtype\":\"%s\",\"probe\":%u,\"sderr\":%u,\"sdtries\":%u,\"blockout\":%u}"),
 		FW_VERSION, FW_BUILD, config.hostname(), ssidEsc, (unsigned long) config.baud(),
 		(unsigned long)(millis() / 1000UL),
 		(unsigned long) heap, (unsigned long) minHeap,
@@ -617,7 +621,8 @@ void ESPWebDAV::handleStatusJson()	{
 		(_cardSizeMB > 0 && sdHealthy()) ? 1 : 0,
 		sdcontrol.canWeTakeBus() ? 0 : 1,
 		(unsigned long) _cardSizeMB, ct,
-		(unsigned) g_sdProbe, (unsigned) g_sdErr, (unsigned) g_sdTries);
+		(unsigned) g_sdProbe, (unsigned) g_sdErr, (unsigned) g_sdTries,
+		(unsigned) config.blockoutSec());
 	if(n < 0) n = 0;
 	if((size_t)n >= sizeof(s_scratch)) n = sizeof(s_scratch) - 1;
 
@@ -753,6 +758,27 @@ void ESPWebDAV::handleSetSerial()	{
 	Serial.begin(b);
 
 	snprintf_P(s_scratch, sizeof(s_scratch), PSTR("{\"ok\":1,\"baud\":%lu}"), (unsigned long) b);
+	sendHeader("Cache-Control", "no-cache");
+	send("200 OK", "application/json", String(s_scratch));
+}
+
+
+
+// ------------------------
+void ESPWebDAV::handleSetBlockout()	{
+// ------------------------
+	// how long to keep off the SPI bus after a printer / USB reader touches
+	// the card. Applies live, no restart.
+	long s = queryParam("sec").toInt();
+	if(s < BLOCKOUT_MIN_S || s > BLOCKOUT_MAX_S)	{
+		keepClient = false;
+		return send("400 Bad Request", "application/json", "{\"ok\":0,\"err\":\"range 1-300\"}");
+	}
+
+	config.setBlockoutSec((uint16_t) s);
+	sdcontrol.setBlockout((uint32_t) s * 1000UL);
+
+	snprintf_P(s_scratch, sizeof(s_scratch), PSTR("{\"ok\":1,\"blockout\":%ld}"), s);
 	sendHeader("Cache-Control", "no-cache");
 	send("200 OK", "application/json", String(s_scratch));
 }

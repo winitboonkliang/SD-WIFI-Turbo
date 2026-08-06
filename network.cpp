@@ -36,6 +36,9 @@ bool Network::start() {
   if(config.hasStaticIP())
     WiFi.config(config.staticIP(), config.gateway(), config.subnet(), config.dnsServer());
 
+  // apply the configured SPI bus blockout (SETUP.INI BLOCKOUT= or web setting)
+  sdcontrol.setBlockout((uint32_t) config.blockoutSec() * 1000UL);
+
   WiFi.begin(config.ssid(), config.password());
 
   // Wait for connection

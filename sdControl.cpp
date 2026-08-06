@@ -3,13 +3,18 @@
 #include "pins.h"
 
 volatile uint32_t SDControl::_spiBlockoutTime = 0;
+volatile uint32_t SDControl::_blockoutMs = SPI_BLOCKOUT_PERIOD;
 volatile bool SDControl::_weTookBus = false;
 
 // ISR must live in IRAM on current ESP8266 cores - a flash-resident ISR
 // crashes the moment it fires during a flash operation.
 void IRAM_ATTR SDControl::csSenseISR() {
 	if(!_weTookBus)
-		_spiBlockoutTime = millis() + SPI_BLOCKOUT_PERIOD;
+		_spiBlockoutTime = millis() + _blockoutMs;
+}
+
+void SDControl::setBlockout(uint32_t ms) {
+	_blockoutMs = ms;
 }
 
 void SDControl::setup() {
